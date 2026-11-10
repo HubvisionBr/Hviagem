@@ -1,0 +1,38 @@
+name: Deploy na VPS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-producao
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Conferir build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+
+  deploy:
+    name: Atualizar na VPS (Easypanel)
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Disparar deploy no Easypanel
+        env:
+          DEPLOY_URL: ${{ secrets.EASYPANEL_DEPLOY_URL }}
+        run: |
+          if [ -z "$DEPLOY_URL" ]; then
+            echo "::error::Secret EASYPANEL_DEPLOY_URL não configurado (Settings → Secrets and variables → Actions)."
+            exit 1
+          fi
+          curl -fsS -X POST "$DEPLOY_URL" -o /dev/null -w "Easypanel respondeu HTTP %{http_code}\n"
