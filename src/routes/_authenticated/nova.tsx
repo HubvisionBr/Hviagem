@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,14 +9,29 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Camera, Plus, LogOut, X, Upload, FileText } from "lucide-react";
+import { Camera, X, Upload, FileText, Loader2, Sparkles, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
-import { TIPOS_DESPESA, UFS, STORAGE_BUCKET } from "@/lib/constants";
+import { TIPOS_DESPESA, STORAGE_BUCKET } from "@/lib/constants";
 import { today } from "@/lib/format";
 import { compressImage } from "@/lib/image";
 import { useNavigate } from "@tanstack/react-router";
-import logo from "@/assets/hviagem-logo.png";
+import { PageHeader } from "@/components/PageHeader";
+import { useProfile } from "@/lib/profile";
+import { lerComprovante } from "@/lib/comprovante.functions";
+
+type Leitura =
+  | { status: "lendo" }
+  | { status: "ok"; faltando: string[] }
+  | { status: "falhou"; motivo: string };
+
+function toBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(",")[1] ?? "");
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(blob);
+  });
+}
 
 export const Route = createFileRoute("/_authenticated/nova")({
   head: () => ({
@@ -35,46 +50,63 @@ function NovaDespesa() {
   const navigate = useNavigate();
   const cameraInput = useRef<HTMLInputElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const profile = useProfile();
 
-  const [colaboradorId, setColaboradorId] = useState<string>("");
   const [tipo, setTipo] = useState<string>("");
-  const [uf, setUf] = useState<string>("PE");
-  const [cidade, setCidade] = useState<string>("Recife");
   const [valor, setValor] = useState<string>("");
   const [dataDespesa, setDataDespesa] = useState<string>(today());
   const [descricao, setDescricao] = useState<string>("");
   const [photoFile, setPhotoFile] = useState<Blob | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [fileMeta, setFileMeta] = useState<{ name: string; type: string; ext: string } | null>(null);
-  const [newDlgOpen, setNewDlgOpen] = useState(false);
-  const [newName, setNewName] = useState("");
 
-  const { data: colaboradores = [] } = useQuery({
-    queryKey: ["colaboradores"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("colaboradores").select("*").order("nome");
-      if (error) throw error;
-      return data;
-    },
-  });
+  const [leitura, setLeitura] = useState<Leitura | null>(null);
+  // Identifica a leitura em andamento: se o usuário trocar ou remover o arquivo, a resposta antiga é descartada.
+  const leituraId = useRef(0);
 
   useEffect(() => {
     return () => { if (photoPreview) URL.revokeObjectURL(photoPreview); };
   }, [photoPreview]);
 
+  // A IA só sugere: preenche os campos e o usuário confere antes de lançar.
+  const analisar = async (blob: Blob, mimeType: string) => {
+    const id = ++leituraId.current;
+    setLeitura({ status: "lendo" });
+    try {
+      const r = await lerComprovante({ data: { base64: await toBase64(blob), mimeType } });
+      if (id !== leituraId.current) return;
+      if (!r.eComprovante) {
+        setLeitura({ status: "falhou", motivo: "Isso não parece um comprovante legível. Preencha os dados manualmente ou tire outra foto." });
+        return;
+      }
+      if (r.tipo) setTipo(r.tipo);
+      if (r.valor != null) setValor(r.valor.toFixed(2).replace(".", ","));
+      if (r.data) setDataDespesa(r.data);
+      if (r.descricao) setDescricao((atual) => atual.trim() ? atual : r.descricao!);
+      const faltando = [!r.tipo && "tipo", r.valor == null && "valor", !r.data && "data"].filter(Boolean) as string[];
+      setLeitura({ status: "ok", faltando });
+    } catch (e) {
+      if (id !== leituraId.current) return;
+      setLeitura({ status: "falhou", motivo: e instanceof Error ? e.message : "Não foi possível ler o comprovante. Preencha manualmente." });
+    }
+  };
+
   const handleFile = async (f: File) => {
     try {
       if (photoPreview) URL.revokeObjectURL(photoPreview);
       if (f.type.startsWith("image/")) {
-        const blob = await compressImage(f);
+        // Resolução suficiente para a IA ler valores pequenos do cupom.
+        const blob = await compressImage(f, 1600, 0.75);
         setPhotoFile(blob);
         setPhotoPreview(URL.createObjectURL(blob));
         setFileMeta({ name: f.name, type: "image/jpeg", ext: "jpg" });
+        void analisar(blob, "image/jpeg");
       } else if (f.type === "application/pdf") {
         if (f.size > 10 * 1024 * 1024) { toast.error("Arquivo muito grande (máx. 10 MB)"); return; }
         setPhotoFile(f);
         setPhotoPreview(null);
         setFileMeta({ name: f.name, type: "application/pdf", ext: "pdf" });
+        void analisar(f, "application/pdf");
       } else {
         toast.error("Envie uma imagem ou PDF");
       }
@@ -88,29 +120,16 @@ function NovaDespesa() {
     setPhotoFile(null);
     setPhotoPreview(null);
     setFileMeta(null);
+    leituraId.current++;
+    setLeitura(null);
   };
-
-  const createColab = useMutation({
-    mutationFn: async (nome: string) => {
-      const { data, error } = await supabase.from("colaboradores").insert({ nome }).select().single();
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: ["colaboradores"] });
-      setColaboradorId(data.id);
-      setNewDlgOpen(false);
-      setNewName("");
-      toast.success("Colaborador criado");
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
 
   const submit = useMutation({
     mutationFn: async () => {
       let foto_url: string | null = null;
       if (photoFile) {
-        const path = `${crypto.randomUUID()}.${fileMeta?.ext ?? "jpg"}`;
+        // A pasta do usuário é exigida pela política do bucket.
+        const path = `${profile.id}/${crypto.randomUUID()}.${fileMeta?.ext ?? "jpg"}`;
         const { error: upErr } = await supabase.storage.from(STORAGE_BUCKET).upload(path, photoFile, {
           contentType: fileMeta?.type ?? "image/jpeg",
           upsert: false,
@@ -119,114 +138,41 @@ function NovaDespesa() {
         foto_url = path;
       }
       const { error } = await supabase.from("despesas").insert({
-        colaborador_id: colaboradorId,
         tipo_despesa: tipo,
-        uf,
-        cidade: cidade.trim(),
         valor: parseFloat(valor.replace(",", ".")),
         data_despesa: dataDespesa,
         descricao: descricao.trim() || null,
         foto_url,
-        status: "pendente",
       });
-      if (error) throw error;
+      if (error) {
+        if (foto_url) await supabase.storage.from(STORAGE_BUCKET).remove([foto_url]);
+        throw error;
+      }
     },
     onSuccess: () => {
       toast.success("Despesa lançada!");
       qc.invalidateQueries({ queryKey: ["despesas"] });
+      clearFile();
       navigate({ to: "/despesas" });
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const canSubmit = colaboradorId && tipo && uf && cidade.trim() && valor && parseFloat(valor.replace(",", ".")) > 0;
-
-  const logout = async () => {
-    await supabase.auth.signOut();
-    navigate({ to: "/auth" });
-  };
+  const canSubmit = tipo && valor && parseFloat(valor.replace(",", ".")) > 0;
 
   return (
     <div className="px-4 pt-6 pb-4">
-      <header className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <img src={logo} alt="Logo HViagem" width={1024} height={1024} className="size-10 object-contain" />
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Nova despesa</h1>
-            <p className="text-sm text-muted-foreground">HViagem · Registre um lançamento</p>
-          </div>
-        </div>
-        <Button variant="ghost" size="icon" onClick={logout} aria-label="Sair">
-          <LogOut className="size-4" />
-        </Button>
-      </header>
+      <PageHeader title="Nova despesa" />
 
       <form
-        onSubmit={(e) => { e.preventDefault(); if (canSubmit && !submit.isPending) submit.mutate(); }}
+        onSubmit={(e) => { e.preventDefault(); if (canSubmit && !submit.isPending && leitura?.status !== "lendo") submit.mutate(); }}
         className="space-y-5 rounded-2xl border border-border bg-card p-5 shadow-sm"
       >
         <div className="space-y-1.5">
-          <Label>Colaborador</Label>
-          <div className="flex gap-2">
-            <Select value={colaboradorId} onValueChange={setColaboradorId}>
-              <SelectTrigger className="flex-1"><SelectValue placeholder="Selecione um colaborador" /></SelectTrigger>
-              <SelectContent>
-                {colaboradores.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button type="button" variant="outline" size="icon" onClick={() => setNewDlgOpen(true)} aria-label="Novo colaborador">
-              <Plus className="size-4" />
-            </Button>
-          </div>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label>Tipo de despesa</Label>
-          <Select value={tipo} onValueChange={setTipo}>
-            <SelectTrigger><SelectValue placeholder="Selecione o tipo" /></SelectTrigger>
-            <SelectContent>
-              {TIPOS_DESPESA.map((t) => (<SelectItem key={t} value={t}>{t}</SelectItem>))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="grid grid-cols-[100px_1fr] gap-3">
-          <div className="space-y-1.5">
-            <Label>UF</Label>
-            <Select value={uf} onValueChange={setUf}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent className="max-h-64">
-                {UFS.map((u) => (<SelectItem key={u} value={u}>{u}</SelectItem>))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Cidade</Label>
-            <Input value={cidade} onChange={(e) => setCidade(e.target.value)} />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1.5">
-            <Label>Valor (R$)</Label>
-            <Input inputMode="decimal" placeholder="0,00" className="font-mono-ledger"
-              value={valor} onChange={(e) => setValor(e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Data</Label>
-            <Input type="date" className="font-mono-ledger" value={dataDespesa} onChange={(e) => setDataDespesa(e.target.value)} />
-          </div>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label>Descrição / Observações</Label>
-          <Textarea rows={3} value={descricao} onChange={(e) => setDescricao(e.target.value)} placeholder="Opcional" />
-        </div>
-
-        <div className="space-y-1.5">
-          <Label>Nota fiscal (foto ou arquivo)</Label>
+          <Label>Comprovante</Label>
+          {!fileMeta && (
+            <p className="text-xs text-muted-foreground">Comece pela foto ou arquivo: os dados são preenchidos automaticamente para você conferir.</p>
+          )}
           <input
             ref={cameraInput} type="file" accept="image/*" capture="environment" className="hidden"
             onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ""; }}
@@ -259,7 +205,7 @@ function NovaDespesa() {
                   <span className="text-sm font-medium truncate">{fileMeta.name}</span>
                 </div>
               )}
-              <div className="flex gap-2 p-2 bg-card border-t border-border">
+              <div className="flex flex-wrap gap-2 p-2 bg-card border-t border-border">
                 <Button type="button" variant="outline" size="sm" onClick={() => cameraInput.current?.click()}>Tirar foto</Button>
                 <Button type="button" variant="outline" size="sm" onClick={() => fileInput.current?.click()}>Escolher arquivo</Button>
                 <Button type="button" variant="ghost" size="sm" onClick={clearFile}>
@@ -268,28 +214,60 @@ function NovaDespesa() {
               </div>
             </div>
           )}
+          {leitura?.status === "lendo" && (
+            <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground" role="status">
+              <Loader2 className="size-4 animate-spin shrink-0" /> Lendo o comprovante…
+            </div>
+          )}
+          {leitura?.status === "ok" && (
+            <div className="flex items-start gap-2 rounded-lg bg-[var(--color-gold-soft)] px-3 py-2 text-sm text-[var(--color-ink)]" role="status">
+              <Sparkles className="size-4 shrink-0 mt-0.5" />
+              <span>
+                Dados preenchidos automaticamente. Confira antes de lançar.
+                {leitura.faltando.length > 0 && ` Não consegui ler: ${leitura.faltando.join(", ")}.`}
+              </span>
+            </div>
+          )}
+          {leitura?.status === "falhou" && (
+            <div className="flex items-start gap-2 rounded-lg bg-muted px-3 py-2 text-sm text-foreground/80" role="status">
+              <TriangleAlert className="size-4 shrink-0 mt-0.5" />
+              <span>{leitura.motivo}</span>
+            </div>
+          )}
         </div>
 
-        <Button type="submit" disabled={!canSubmit || submit.isPending} className="w-full h-12 text-base font-semibold">
-          {submit.isPending ? "Enviando…" : "Lançar despesa"}
+        <div className="space-y-1.5">
+          <Label>Tipo de despesa</Label>
+          <Select value={tipo} onValueChange={setTipo}>
+            <SelectTrigger><SelectValue placeholder="Selecione o tipo" /></SelectTrigger>
+            <SelectContent>
+              {TIPOS_DESPESA.map((t) => (<SelectItem key={t} value={t}>{t}</SelectItem>))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label>Valor (R$)</Label>
+            <Input inputMode="decimal" placeholder="0,00" className="font-mono-ledger"
+              value={valor} onChange={(e) => setValor(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Data</Label>
+            <Input type="date" className="font-mono-ledger" value={dataDespesa} onChange={(e) => setDataDespesa(e.target.value)} />
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label>Descrição / Observações</Label>
+          <Textarea rows={3} value={descricao} onChange={(e) => setDescricao(e.target.value)} placeholder="Opcional" />
+        </div>
+
+        <Button type="submit" disabled={!canSubmit || submit.isPending || leitura?.status === "lendo"} className="w-full h-12 text-base font-semibold">
+          {submit.isPending ? "Enviando…" : leitura?.status === "ok" ? "Confirmar e lançar" : "Lançar despesa"}
         </Button>
       </form>
 
-      <Dialog open={newDlgOpen} onOpenChange={setNewDlgOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Novo colaborador</DialogTitle></DialogHeader>
-          <div className="space-y-2">
-            <Label>Nome</Label>
-            <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Nome completo" autoFocus />
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setNewDlgOpen(false)}>Cancelar</Button>
-            <Button onClick={() => newName.trim() && createColab.mutate(newName.trim())} disabled={!newName.trim() || createColab.isPending}>
-              Criar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

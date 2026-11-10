@@ -8,12 +8,16 @@ import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { CheckCircle2, Download, Share2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Download, Share2 } from "lucide-react";
 import { toast } from "sonner";
+import type { jsPDF } from "jspdf";
 import { fmtBRL, fmtDate, firstDayOfMonth, today } from "@/lib/format";
-import { buildFechamentoPDF, pdfFilename, savePDF, sharePDF, type DespesaRow } from "@/lib/pdf";
+import { buildDespesasPDF, pdfFilename, savePDF, sharePDF, type DespesaRow } from "@/lib/pdf";
+import { PageHeader } from "@/components/PageHeader";
+import { requireAdmin } from "@/lib/profile";
 
 export const Route = createFileRoute("/_authenticated/fechamento")({
+  beforeLoad: requireAdmin,
   head: () => ({
     meta: [
       { title: "Fechamento — Hubvision" },
@@ -26,14 +30,40 @@ export const Route = createFileRoute("/_authenticated/fechamento")({
 });
 
 interface DespesaLite {
-  id: string; valor: number; data_despesa: string; tipo_despesa: string;
-  cidade: string; uf: string; status: string; colaborador_id: string;
-  colaboradores: { nome: string } | null;
+  id: string; valor: number; data_despesa: string; tipo_despesa: string; descricao: string | null;
+  status: string; user_id: string;
+  colaborador: { nome: string } | null;
 }
 
 interface Relatorio {
-  id: string; data_inicio: string; data_fim: string; colaborador_filtro: string | null;
-  total: number; quantidade: number; status: string; created_at: string;
+  id: string; data_inicio: string; data_fim: string; colaborador_id: string | null;
+  total: number; quantidade: number; created_at: string;
+  colaborador: { nome: string } | null;
+}
+
+const DESPESA_COLS = "id, valor, data_despesa, tipo_despesa, descricao, status, user_id, colaborador:profiles!despesas_user_id_fkey(nome)";
+
+function toRows(despesas: DespesaLite[]): DespesaRow[] {
+  return despesas.map((d) => ({
+    colaborador: d.colaborador?.nome ?? "—",
+    tipo_despesa: d.tipo_despesa,
+    data_despesa: d.data_despesa,
+    status: d.status,
+    valor: Number(d.valor),
+    descricao: d.descricao,
+  }));
+}
+
+function fechamentoPDF(inicio: string, fim: string, colab: string | null, rows: DespesaRow[], concluidoEm: string) {
+  return buildDespesasPDF({
+    titulo: "Relatório de Fechamento",
+    meta: [
+      `Período: ${fmtDate(inicio)} a ${fmtDate(fim)}`,
+      `Colaborador: ${colab || "Todos"}`,
+      `Concluído em: ${concluidoEm}`,
+    ],
+    despesas: rows,
+  });
 }
 
 function FechamentoPage() {
@@ -41,10 +71,7 @@ function FechamentoPage() {
 
   return (
     <div className="px-4 pt-6 pb-4">
-      <header className="mb-5">
-        <h1 className="text-2xl font-bold tracking-tight">Fechamento</h1>
-        <p className="text-sm text-muted-foreground">Gere relatórios do período</p>
-      </header>
+      <PageHeader title="Fechamento" subtitle="Feche o período e gere o PDF" />
 
       <div className="inline-flex p-1 rounded-full bg-muted mb-5">
         {[
@@ -71,67 +98,65 @@ function NovoFechamento() {
   const [concluded, setConcluded] = useState<{ inicio: string; fim: string; colab: string | null; rows: DespesaRow[]; total: number } | null>(null);
 
   const { data: colaboradores = [] } = useQuery({
-    queryKey: ["colaboradores"],
+    queryKey: ["profiles"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("colaboradores").select("*").order("nome");
+      const { data, error } = await supabase.from("profiles").select("id, nome, ativo").order("nome");
       if (error) throw error;
       return data;
     },
   });
 
-  const { data: despesas = [] } = useQuery<DespesaLite[]>({
+  // Tudo que está em aberto no período: aprovadas entram no fechamento; pendentes só geram aviso.
+  const { data: abertas = [] } = useQuery<DespesaLite[]>({
     queryKey: ["despesas", "fechamento", dataInicio, dataFim, colabFilter],
+    enabled: !!dataInicio && !!dataFim && dataFim >= dataInicio,
     queryFn: async () => {
       let q = supabase
         .from("despesas")
-        .select("id, valor, data_despesa, tipo_despesa, cidade, uf, status, colaborador_id, colaboradores(nome)")
+        .select(DESPESA_COLS)
         .is("relatorio_id", null)
+        .in("status", ["aprovado", "pendente"])
         .gte("data_despesa", dataInicio)
         .lte("data_despesa", dataFim)
         .order("data_despesa", { ascending: true });
-      if (colabFilter !== "todos") q = q.eq("colaborador_id", colabFilter);
+      if (colabFilter !== "todos") q = q.eq("user_id", colabFilter);
       const { data, error } = await q;
       if (error) throw error;
       return data as unknown as DespesaLite[];
     },
   });
 
-  const total = useMemo(() => despesas.reduce((a, d) => a + Number(d.valor), 0), [despesas]);
+  const aprovadas = useMemo(() => abertas.filter((d) => d.status === "aprovado"), [abertas]);
+  const pendentes = abertas.length - aprovadas.length;
+  const total = useMemo(() => aprovadas.reduce((a, d) => a + Number(d.valor), 0), [aprovadas]);
 
   const conclude = useMutation({
     mutationFn: async () => {
-      const colabNome = colabFilter === "todos" ? null : colaboradores.find((c) => c.id === colabFilter)?.nome ?? null;
-      const { data: rel, error } = await supabase.from("relatorios_fechamento").insert({
-        data_inicio: dataInicio,
-        data_fim: dataFim,
-        colaborador_filtro: colabNome,
-        total,
-        quantidade: despesas.length,
-        status: "concluido",
-      }).select().single();
+      const { data: relId, error } = await supabase.rpc("concluir_fechamento", {
+        p_data_inicio: dataInicio,
+        p_data_fim: dataFim,
+        p_colaborador_id: colabFilter === "todos" ? null : colabFilter,
+      });
       if (error) throw error;
-      const ids = despesas.map((d) => d.id);
-      if (ids.length) {
-        const { error: upErr } = await supabase.from("despesas").update({ relatorio_id: rel.id, status: "fechada" }).in("id", ids);
-        if (upErr) throw upErr;
-      }
-      return { rel, colabNome };
+      // Usa exatamente o que o banco travou no fechamento (pode diferir da prévia se algo mudou no meio).
+      const { data, error: e2 } = await supabase
+        .from("despesas")
+        .select(DESPESA_COLS)
+        .eq("relatorio_id", relId)
+        .order("data_despesa", { ascending: true });
+      if (e2) throw e2;
+      return data as unknown as DespesaLite[];
     },
-    onSuccess: ({ colabNome }) => {
+    onSuccess: (fechadas) => {
       qc.invalidateQueries({ queryKey: ["despesas"] });
       qc.invalidateQueries({ queryKey: ["relatorios"] });
-      qc.invalidateQueries({ queryKey: ["despesas", "pending-count"] });
+      const rows = toRows(fechadas);
       setConcluded({
-        inicio: dataInicio, fim: dataFim, colab: colabNome,
-        rows: despesas.map((d) => ({
-          colaborador: d.colaboradores?.nome ?? "—",
-          tipo_despesa: d.tipo_despesa,
-          cidade: d.cidade, uf: d.uf,
-          data_despesa: d.data_despesa,
-          status: d.status,
-          valor: Number(d.valor),
-        })),
-        total,
+        inicio: dataInicio,
+        fim: dataFim,
+        colab: colabFilter === "todos" ? null : colaboradores.find((c) => c.id === colabFilter)?.nome ?? null,
+        rows,
+        total: rows.reduce((a, r) => a + r.valor, 0),
       });
       toast.success("Fechamento concluído!");
     },
@@ -151,11 +176,8 @@ function NovoFechamento() {
         <div className="mt-3 text-3xl font-mono-ledger font-bold">{fmtBRL(concluded.total)}</div>
 
         <PDFButtons
-          onGet={() => buildFechamentoPDF({
-            dataInicio: concluded.inicio, dataFim: concluded.fim, colaboradorFiltro: concluded.colab,
-            despesas: concluded.rows, total: concluded.total, concluidoEm: new Date().toLocaleString("pt-BR"),
-          })}
-          filename={pdfFilename(concluded.inicio, concluded.fim)}
+          onGet={() => fechamentoPDF(concluded.inicio, concluded.fim, concluded.colab, concluded.rows, new Date().toLocaleString("pt-BR"))}
+          filename={pdfFilename(concluded.inicio, concluded.fim, concluded.colab)}
         />
 
         <Button variant="outline" className="mt-3 w-full" onClick={() => setConcluded(null)}>
@@ -163,6 +185,15 @@ function NovoFechamento() {
         </Button>
       </div>
     );
+  }
+
+  // Prévia agrupada por colaborador
+  const porColab = new Map<string, { nome: string; qtd: number; total: number }>();
+  for (const d of aprovadas) {
+    const c = porColab.get(d.user_id) ?? { nome: d.colaborador?.nome ?? "—", qtd: 0, total: 0 };
+    c.qtd += 1;
+    c.total += Number(d.valor);
+    porColab.set(d.user_id, c);
   }
 
   return (
@@ -179,53 +210,54 @@ function NovoFechamento() {
           </div>
         </div>
         <div className="space-y-1.5">
-          <Label>Colaborador (opcional)</Label>
+          <Label>Colaborador</Label>
           <Select value={colabFilter} onValueChange={setColabFilter}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="todos">Todos</SelectItem>
-              {colaboradores.map((c) => (<SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>))}
+              {colaboradores.map((c) => (<SelectItem key={c.id} value={c.id}>{c.nome}{!c.ativo && " (inativo)"}</SelectItem>))}
             </SelectContent>
           </Select>
         </div>
       </div>
 
       <div className="rounded-2xl border border-[var(--color-gold)]/60 bg-[var(--color-gold-soft)]/60 p-5">
-        <div className="text-[11px] uppercase tracking-wider font-semibold text-[var(--color-ink)]/70">Prévia do período</div>
-        <div className="mt-1 flex items-baseline justify-between gap-3">
-          <div>
-            <div className="text-3xl font-mono-ledger font-bold text-[var(--color-ink)]">{fmtBRL(total)}</div>
-            <div className="text-xs text-[var(--color-ink)]/70">{despesas.length} despesa(s) elegíveis</div>
-          </div>
-        </div>
+        <div className="text-[11px] uppercase tracking-wider font-semibold text-[var(--color-ink)]/70">Aprovadas no período</div>
+        <div className="mt-1 text-3xl font-mono-ledger font-bold text-[var(--color-ink)]">{fmtBRL(total)}</div>
+        <div className="text-xs text-[var(--color-ink)]/70">{aprovadas.length} despesa(s) entram no fechamento</div>
       </div>
 
-      {despesas.length > 0 && (
+      {pendentes > 0 && (
+        <div className="flex items-start gap-2 rounded-2xl border border-[var(--color-status-pending)]/40 bg-[var(--color-status-pending-bg)] p-4 text-sm text-[var(--color-status-pending)]">
+          <AlertTriangle className="size-4 mt-0.5 shrink-0" />
+          <span>
+            {pendentes} despesa(s) do período ainda estão <b>pendentes</b> e não entram neste fechamento.
+            Aprove ou rejeite antes, se quiser incluí-las.
+          </span>
+        </div>
+      )}
+
+      {porColab.size > 0 && (
         <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-          <div className="text-xs uppercase tracking-wider font-semibold text-muted-foreground mb-2">Prévia</div>
+          <div className="text-xs uppercase tracking-wider font-semibold text-muted-foreground mb-2">Por colaborador</div>
           <ul className="divide-y divide-border">
-            {despesas.slice(0, 40).map((d) => (
-              <li key={d.id} className="py-2 flex items-center justify-between gap-3 text-sm">
+            {[...porColab.values()].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")).map((c) => (
+              <li key={c.nome} className="py-2 flex items-center justify-between gap-3 text-sm">
                 <div className="min-w-0">
-                  <div className="truncate font-medium">{d.tipo_despesa}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {d.colaboradores?.nome} · <span className="font-mono-ledger">{fmtDate(d.data_despesa)}</span>
-                  </div>
+                  <div className="truncate font-medium">{c.nome}</div>
+                  <div className="text-xs text-muted-foreground">{c.qtd} despesa(s)</div>
                 </div>
-                <div className="font-mono-ledger font-semibold">{fmtBRL(d.valor)}</div>
+                <div className="font-mono-ledger font-semibold">{fmtBRL(c.total)}</div>
               </li>
             ))}
           </ul>
-          {despesas.length > 40 && (
-            <p className="text-xs text-muted-foreground pt-2">…e mais {despesas.length - 40}</p>
-          )}
         </div>
       )}
 
       <Button
         className="w-full h-12 text-base font-semibold"
-        disabled={conclude.isPending || despesas.length === 0}
-        onClick={() => { if (confirm("Concluir fechamento? As despesas ficarão bloqueadas.")) conclude.mutate(); }}
+        disabled={conclude.isPending || aprovadas.length === 0}
+        onClick={() => { if (confirm("Concluir fechamento? As despesas incluídas ficarão bloqueadas.")) conclude.mutate(); }}
       >
         {conclude.isPending ? "Processando…" : "Concluir fechamento"}
       </Button>
@@ -239,7 +271,7 @@ function Historico() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("relatorios_fechamento")
-        .select("*")
+        .select("*, colaborador:profiles!relatorios_fechamento_colaborador_id_fkey(nome)")
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data as unknown as Relatorio[];
@@ -262,18 +294,16 @@ function Historico() {
 }
 
 function HistoricoCard({ r }: { r: Relatorio }) {
-  const fetchRows = async (): Promise<DespesaRow[]> => {
+  const colab = r.colaborador?.nome ?? null;
+  const buildPdf = async () => {
     const { data, error } = await supabase
       .from("despesas")
-      .select("valor, data_despesa, tipo_despesa, cidade, uf, status, colaboradores(nome)")
+      .select(DESPESA_COLS)
       .eq("relatorio_id", r.id)
       .order("data_despesa", { ascending: true });
     if (error) throw error;
-    return (data as unknown as Array<{ valor: number; data_despesa: string; tipo_despesa: string; cidade: string; uf: string; status: string; colaboradores: { nome: string } | null }>).map((d) => ({
-      colaborador: d.colaboradores?.nome ?? "—",
-      tipo_despesa: d.tipo_despesa, cidade: d.cidade, uf: d.uf,
-      data_despesa: d.data_despesa, status: d.status, valor: Number(d.valor),
-    }));
+    return fechamentoPDF(r.data_inicio, r.data_fim, colab, toRows(data as unknown as DespesaLite[]),
+      new Date(r.created_at).toLocaleString("pt-BR"));
   };
 
   return (
@@ -284,30 +314,20 @@ function HistoricoCard({ r }: { r: Relatorio }) {
             {fmtDate(r.data_inicio)} → {fmtDate(r.data_fim)}
           </div>
           <div className="text-xs text-muted-foreground mt-0.5">
-            {r.colaborador_filtro || "Todos"} · {r.quantidade} despesa(s)
+            {colab || "Todos"} · {r.quantidade} despesa(s)
           </div>
         </div>
         <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-[var(--color-status-approved-bg)] text-[var(--color-status-approved)]">
-          {r.status}
+          concluído
         </span>
       </div>
       <div className="mt-2 text-2xl font-mono-ledger font-bold">{fmtBRL(r.total)}</div>
-      <PDFButtons
-        onGet={async () => {
-          const rows = await fetchRows();
-          return buildFechamentoPDF({
-            dataInicio: r.data_inicio, dataFim: r.data_fim,
-            colaboradorFiltro: r.colaborador_filtro, despesas: rows, total: Number(r.total),
-            concluidoEm: new Date(r.created_at).toLocaleString("pt-BR"),
-          });
-        }}
-        filename={pdfFilename(r.data_inicio, r.data_fim)}
-      />
+      <PDFButtons onGet={buildPdf} filename={pdfFilename(r.data_inicio, r.data_fim, colab)} />
     </div>
   );
 }
 
-function PDFButtons({ onGet, filename }: { onGet: () => Promise<import("jspdf").jsPDF> | import("jspdf").jsPDF; filename: string }) {
+function PDFButtons({ onGet, filename }: { onGet: () => Promise<jsPDF> | jsPDF; filename: string }) {
   const [busy, setBusy] = useState<"share" | "save" | null>(null);
   const run = async (mode: "share" | "save") => {
     setBusy(mode);
@@ -332,4 +352,3 @@ function PDFButtons({ onGet, filename }: { onGet: () => Promise<import("jspdf").
     </div>
   );
 }
-

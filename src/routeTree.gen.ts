@@ -9,30 +9,31 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as AuthRouteImport } from './routes/auth'
-import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as AuthenticatedNovaRouteImport } from './routes/_authenticated/nova'
-import { Route as AuthenticatedFechamentoRouteImport } from './routes/_authenticated/fechamento'
+import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
+import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedDespesasRouteImport } from './routes/_authenticated/despesas'
+import { Route as AuthenticatedFechamentoRouteImport } from './routes/_authenticated/fechamento'
+import { Route as AuthenticatedNovaRouteImport } from './routes/_authenticated/nova'
+import { Route as AuthenticatedUsuariosRouteImport } from './routes/_authenticated/usuarios'
 
-const AuthRoute = AuthRouteImport.update({
-  id: '/auth',
-  path: '/auth',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
   id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthenticatedNovaRoute = AuthenticatedNovaRouteImport.update({
-  id: '/nova',
-  path: '/nova',
+const AuthenticatedDespesasRoute = AuthenticatedDespesasRouteImport.update({
+  id: '/despesas',
+  path: '/despesas',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedFechamentoRoute = AuthenticatedFechamentoRouteImport.update({
@@ -40,9 +41,14 @@ const AuthenticatedFechamentoRoute = AuthenticatedFechamentoRouteImport.update({
   path: '/fechamento',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const AuthenticatedDespesasRoute = AuthenticatedDespesasRouteImport.update({
-  id: '/despesas',
-  path: '/despesas',
+const AuthenticatedNovaRoute = AuthenticatedNovaRouteImport.update({
+  id: '/nova',
+  path: '/nova',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedUsuariosRoute = AuthenticatedUsuariosRouteImport.update({
+  id: '/usuarios',
+  path: '/usuarios',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 
@@ -52,6 +58,7 @@ export interface FileRoutesByFullPath {
   '/despesas': typeof AuthenticatedDespesasRoute
   '/fechamento': typeof AuthenticatedFechamentoRoute
   '/nova': typeof AuthenticatedNovaRoute
+  '/usuarios': typeof AuthenticatedUsuariosRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -59,6 +66,7 @@ export interface FileRoutesByTo {
   '/despesas': typeof AuthenticatedDespesasRoute
   '/fechamento': typeof AuthenticatedFechamentoRoute
   '/nova': typeof AuthenticatedNovaRoute
+  '/usuarios': typeof AuthenticatedUsuariosRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -68,12 +76,13 @@ export interface FileRoutesById {
   '/_authenticated/despesas': typeof AuthenticatedDespesasRoute
   '/_authenticated/fechamento': typeof AuthenticatedFechamentoRoute
   '/_authenticated/nova': typeof AuthenticatedNovaRoute
+  '/_authenticated/usuarios': typeof AuthenticatedUsuariosRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/auth' | '/despesas' | '/fechamento' | '/nova'
+  fullPaths: '/' | '/auth' | '/despesas' | '/fechamento' | '/nova' | '/usuarios'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth' | '/despesas' | '/fechamento' | '/nova'
+  to: '/' | '/auth' | '/despesas' | '/fechamento' | '/nova' | '/usuarios'
   id:
     | '__root__'
     | '/'
@@ -82,6 +91,7 @@ export interface FileRouteTypes {
     | '/_authenticated/despesas'
     | '/_authenticated/fechamento'
     | '/_authenticated/nova'
+    | '/_authenticated/usuarios'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -92,11 +102,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/auth': {
-      id: '/auth'
-      path: '/auth'
-      fullPath: '/auth'
-      preLoaderRoute: typeof AuthRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated': {
@@ -106,18 +116,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_authenticated/nova': {
-      id: '/_authenticated/nova'
-      path: '/nova'
-      fullPath: '/nova'
-      preLoaderRoute: typeof AuthenticatedNovaRouteImport
+    '/_authenticated/despesas': {
+      id: '/_authenticated/despesas'
+      path: '/despesas'
+      fullPath: '/despesas'
+      preLoaderRoute: typeof AuthenticatedDespesasRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/fechamento': {
@@ -127,11 +137,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedFechamentoRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/despesas': {
-      id: '/_authenticated/despesas'
-      path: '/despesas'
-      fullPath: '/despesas'
-      preLoaderRoute: typeof AuthenticatedDespesasRouteImport
+    '/_authenticated/nova': {
+      id: '/_authenticated/nova'
+      path: '/nova'
+      fullPath: '/nova'
+      preLoaderRoute: typeof AuthenticatedNovaRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/usuarios': {
+      id: '/_authenticated/usuarios'
+      path: '/usuarios'
+      fullPath: '/usuarios'
+      preLoaderRoute: typeof AuthenticatedUsuariosRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
   }
@@ -141,12 +158,14 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedDespesasRoute: typeof AuthenticatedDespesasRoute
   AuthenticatedFechamentoRoute: typeof AuthenticatedFechamentoRoute
   AuthenticatedNovaRoute: typeof AuthenticatedNovaRoute
+  AuthenticatedUsuariosRoute: typeof AuthenticatedUsuariosRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDespesasRoute: AuthenticatedDespesasRoute,
   AuthenticatedFechamentoRoute: AuthenticatedFechamentoRoute,
   AuthenticatedNovaRoute: AuthenticatedNovaRoute,
+  AuthenticatedUsuariosRoute: AuthenticatedUsuariosRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =

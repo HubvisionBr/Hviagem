@@ -22,14 +22,13 @@ export const Route = createFileRoute("/auth")({
 
 function AuthPage() {
   const navigate = useNavigate();
-  const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (data.user) navigate({ to: "/nova" });
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) navigate({ to: "/nova" });
     });
   }, [navigate]);
 
@@ -37,18 +36,12 @@ function AuthPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      if (mode === "login") {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: { emailRedirectTo: window.location.origin },
-        });
-        if (error) throw error;
+      const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      if (error) {
+        throw new Error(
+          error.message === "Invalid login credentials" ? "E-mail ou senha incorretos" : error.message,
+        );
       }
-      toast.success(mode === "login" ? "Bem-vindo!" : "Conta criada!");
       navigate({ to: "/nova" });
     } catch (err) {
       toast.error((err as Error).message);
@@ -69,36 +62,28 @@ function AuthPage() {
         </div>
 
         <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-          <h2 className="text-lg font-semibold mb-1">
-            {mode === "login" ? "Entrar" : "Criar conta"}
-          </h2>
-          <p className="text-sm text-muted-foreground mb-5">
-            {mode === "login" ? "Acesse com seu e-mail corporativo" : "Cadastre seu e-mail para começar"}
-          </p>
+          <h2 className="text-lg font-semibold mb-1">Entrar</h2>
+          <p className="text-sm text-muted-foreground mb-5">Use o e-mail e a senha que o administrador cadastrou</p>
           <form onSubmit={submit} className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="email">E-mail</Label>
-              <Input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
+              <Input id="email" type="email" inputMode="email" required value={email}
+                onChange={(e) => setEmail(e.target.value)} autoComplete="email" autoCapitalize="none" />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="password">Senha</Label>
-              <Input id="password" type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={mode === "login" ? "current-password" : "new-password"} />
+              <Input id="password" type="password" required value={password}
+                onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
             </div>
-            <Button type="submit" disabled={loading} className="w-full">
-              {loading ? "Aguarde…" : mode === "login" ? "Entrar" : "Criar conta"}
+            <Button type="submit" disabled={loading} className="w-full h-11">
+              {loading ? "Entrando…" : "Entrar"}
             </Button>
           </form>
-          <button
-            type="button"
-            onClick={() => setMode(mode === "login" ? "signup" : "login")}
-            className="mt-4 w-full text-center text-sm text-muted-foreground hover:text-foreground"
-          >
-            {mode === "login" ? "Não tem conta? Criar conta" : "Já tem conta? Entrar"}
-          </button>
+          <p className="mt-4 text-center text-xs text-muted-foreground">
+            Não tem acesso ou esqueceu a senha? Fale com o administrador.
+          </p>
         </div>
       </div>
     </div>
   );
 }
-
-// touch 1785318474

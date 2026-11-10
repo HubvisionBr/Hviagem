@@ -4,8 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 export const Route = createFileRoute("/")({
   ssr: false,
   beforeLoad: async () => {
-    const { data } = await supabase.auth.getUser();
-    if (data.user) throw redirect({ to: "/nova" });
+    const { data } = await supabase.auth.getSession();
+    if (data.session) throw redirect({ to: "/nova" });
     throw redirect({ to: "/auth" });
   },
 });

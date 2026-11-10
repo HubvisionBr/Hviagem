@@ -14,76 +14,74 @@ export type Database = {
   }
   public: {
     Tables: {
-      colaboradores: {
-        Row: {
-          created_at: string
-          id: string
-          nome: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          nome: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          nome?: string
-        }
-        Relationships: []
-      }
       despesas: {
         Row: {
-          cidade: string
-          colaborador_id: string
+          avaliado_em: string | null
+          avaliado_por: string | null
+          cidade: string | null
           created_at: string
-          created_by: string | null
           data_despesa: string
           descricao: string | null
           foto_url: string | null
           id: string
+          motivo_rejeicao: string | null
           relatorio_id: string | null
           status: string
           tipo_despesa: string
-          uf: string
+          uf: string | null
+          updated_at: string
+          user_id: string
           valor: number
         }
         Insert: {
-          cidade: string
-          colaborador_id: string
+          avaliado_em?: string | null
+          avaliado_por?: string | null
+          cidade?: string | null
           created_at?: string
-          created_by?: string | null
-          data_despesa: string
-          descricao?: string | null
-          foto_url?: string | null
-          id?: string
-          relatorio_id?: string | null
-          status?: string
-          tipo_despesa: string
-          uf: string
-          valor: number
-        }
-        Update: {
-          cidade?: string
-          colaborador_id?: string
-          created_at?: string
-          created_by?: string | null
           data_despesa?: string
           descricao?: string | null
           foto_url?: string | null
           id?: string
+          motivo_rejeicao?: string | null
+          relatorio_id?: string | null
+          status?: string
+          tipo_despesa: string
+          uf?: string | null
+          updated_at?: string
+          user_id?: string
+          valor: number
+        }
+        Update: {
+          avaliado_em?: string | null
+          avaliado_por?: string | null
+          cidade?: string | null
+          created_at?: string
+          data_despesa?: string
+          descricao?: string | null
+          foto_url?: string | null
+          id?: string
+          motivo_rejeicao?: string | null
           relatorio_id?: string | null
           status?: string
           tipo_despesa?: string
-          uf?: string
+          uf?: string | null
+          updated_at?: string
+          user_id?: string
           valor?: number
         }
         Relationships: [
           {
-            foreignKeyName: "despesas_colaborador_id_fkey"
-            columns: ["colaborador_id"]
+            foreignKeyName: "despesas_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
-            referencedRelation: "colaboradores"
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "despesas_avaliado_por_fkey"
+            columns: ["avaliado_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
@@ -95,45 +93,84 @@ export type Database = {
           },
         ]
       }
+      profiles: {
+        Row: {
+          ativo: boolean
+          created_at: string
+          email: string
+          id: string
+          nome: string
+          role: string
+        }
+        Insert: {
+          ativo?: boolean
+          created_at?: string
+          email: string
+          id: string
+          nome: string
+          role?: string
+        }
+        Update: {
+          ativo?: boolean
+          created_at?: string
+          email?: string
+          id?: string
+          nome?: string
+          role?: string
+        }
+        Relationships: []
+      }
       relatorios_fechamento: {
         Row: {
-          colaborador_filtro: string | null
+          colaborador_id: string | null
           created_at: string
+          created_by: string
           data_fim: string
           data_inicio: string
           id: string
           quantidade: number
-          status: string
           total: number
         }
         Insert: {
-          colaborador_filtro?: string | null
+          colaborador_id?: string | null
           created_at?: string
+          created_by?: string
           data_fim: string
           data_inicio: string
           id?: string
           quantidade?: number
-          status?: string
           total?: number
         }
         Update: {
-          colaborador_filtro?: string | null
+          colaborador_id?: string | null
           created_at?: string
+          created_by?: string
           data_fim?: string
           data_inicio?: string
           id?: string
           quantidade?: number
-          status?: string
           total?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "relatorios_fechamento_colaborador_id_fkey"
+            columns: ["colaborador_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      concluir_fechamento: {
+        Args: { p_colaborador_id?: string | null; p_data_fim: string; p_data_inicio: string }
+        Returns: string
+      }
+      is_admin: { Args: never; Returns: boolean }
     }
     Enums: {
       [_ in never]: never

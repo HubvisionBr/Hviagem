@@ -1,17 +1,24 @@
 import { Link, useLocation } from "@tanstack/react-router";
-import { FilePlus, Receipt, FileCheck } from "lucide-react";
+import { FilePlus, Receipt, FileCheck, Users } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { isAdmin, useProfile } from "@/lib/profile";
 
 export function BottomNav() {
   const loc = useLocation();
+  const profile = useProfile();
+  const admin = isAdmin(profile);
+
+  // Admin: pendentes de toda a equipe (para aprovar). Colaborador: as próprias pendentes.
   const { data: pendingCount = 0 } = useQuery({
-    queryKey: ["despesas", "pending-count"],
+    queryKey: ["despesas", "pending-count", profile.id],
     queryFn: async () => {
-      const { count } = await supabase
+      let q = supabase
         .from("despesas")
         .select("id", { count: "exact", head: true })
         .eq("status", "pendente");
+      if (!admin) q = q.eq("user_id", profile.id);
+      const { count } = await q;
       return count ?? 0;
     },
     refetchInterval: 30000,
@@ -19,13 +26,18 @@ export function BottomNav() {
 
   const tabs = [
     { to: "/nova", label: "Nova despesa", icon: FilePlus, badge: 0 },
-    { to: "/despesas", label: "Despesas", icon: Receipt, badge: pendingCount },
-    { to: "/fechamento", label: "Fechamento", icon: FileCheck, badge: 0 },
+    { to: "/despesas", label: admin ? "Despesas" : "Minhas despesas", icon: Receipt, badge: pendingCount },
+    ...(admin
+      ? [
+          { to: "/fechamento", label: "Fechamento", icon: FileCheck, badge: 0 },
+          { to: "/usuarios", label: "Usuários", icon: Users, badge: 0 },
+        ]
+      : []),
   ] as const;
 
   return (
     <nav className="fixed bottom-0 inset-x-0 z-50 border-t border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 pb-[env(safe-area-inset-bottom)]">
-      <div className="mx-auto max-w-2xl grid grid-cols-3">
+      <div className={`mx-auto max-w-2xl grid ${admin ? "grid-cols-4" : "grid-cols-2"}`}>
         {tabs.map((t) => {
           const active = loc.pathname.startsWith(t.to);
           const Icon = t.icon;
