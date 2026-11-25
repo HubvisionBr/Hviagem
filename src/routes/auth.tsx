@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import logo from "@/assets/hviagem-logo.png";
+import { Logo } from "@/components/Logo";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export const Route = createFileRoute("/auth")({
   ssr: false,
@@ -51,17 +52,16 @@ function AuthPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 bg-background">
+    <div className="relative min-h-screen flex items-center justify-center px-4 bg-background">
+      <ThemeToggle className="absolute top-4 right-4" />
       <div className="w-full max-w-sm">
-        <div className="flex items-center gap-3 mb-8">
-          <img src={logo} alt="Logo HViagem" width={1024} height={1024} className="size-12 object-contain" />
-          <div>
-            <h1 className="text-xl font-bold tracking-tight">HViagem</h1>
-            <p className="text-xs text-muted-foreground">Prestação de contas · Hubvision</p>
-          </div>
+        <div className="mb-8 flex flex-col items-center gap-2 text-center">
+          <h1 className="sr-only">HViagem</h1>
+          <Logo className="h-11 w-auto" />
+          <p className="text-sm text-muted-foreground">Prestação de contas · Hubvision</p>
         </div>
 
-        <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+        <div className="rounded-xl border border-border bg-card p-6 shadow-card">
           <h2 className="text-lg font-semibold mb-1">Entrar</h2>
           <p className="text-sm text-muted-foreground mb-5">Use o e-mail e a senha que o administrador cadastrou</p>
           <form onSubmit={submit} className="space-y-4">

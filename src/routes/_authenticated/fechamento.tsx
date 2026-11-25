@@ -14,6 +14,7 @@ import type { jsPDF } from "jspdf";
 import { fmtBRL, fmtDate, firstDayOfMonth, today } from "@/lib/format";
 import { buildDespesasPDF, pdfFilename, savePDF, sharePDF, type DespesaRow } from "@/lib/pdf";
 import { PageHeader } from "@/components/PageHeader";
+import { ListSkeleton } from "@/components/ListSkeleton";
 import { requireAdmin } from "@/lib/profile";
 
 export const Route = createFileRoute("/_authenticated/fechamento")({
@@ -165,7 +166,7 @@ function NovoFechamento() {
 
   if (concluded) {
     return (
-      <div className="rounded-2xl border border-border bg-card p-6 text-center shadow-sm">
+      <div className="rounded-xl border border-border bg-card p-6 text-center shadow-card">
         <div className="mx-auto size-14 rounded-full bg-[var(--color-status-approved-bg)] flex items-center justify-center">
           <CheckCircle2 className="size-7 text-[var(--color-status-approved)]" />
         </div>
@@ -198,7 +199,7 @@ function NovoFechamento() {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl border border-border bg-card p-5 shadow-sm space-y-4">
+      <div className="rounded-xl border border-border bg-card p-5 shadow-card space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
             <Label>Data inicial</Label>
@@ -221,14 +222,14 @@ function NovoFechamento() {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-[var(--color-gold)]/60 bg-[var(--color-gold-soft)]/60 p-5">
+      <div className="rounded-xl border border-[var(--color-gold)]/60 bg-[var(--color-gold-soft)]/60 p-5">
         <div className="text-[11px] uppercase tracking-wider font-semibold text-[var(--color-ink)]/70">Aprovadas no período</div>
         <div className="mt-1 text-3xl font-mono-ledger font-bold text-[var(--color-ink)]">{fmtBRL(total)}</div>
         <div className="text-xs text-[var(--color-ink)]/70">{aprovadas.length} despesa(s) entram no fechamento</div>
       </div>
 
       {pendentes > 0 && (
-        <div className="flex items-start gap-2 rounded-2xl border border-[var(--color-status-pending)]/40 bg-[var(--color-status-pending-bg)] p-4 text-sm text-[var(--color-status-pending)]">
+        <div className="flex items-start gap-2 rounded-xl border border-[var(--color-status-pending)]/40 bg-[var(--color-status-pending-bg)] p-4 text-sm text-[var(--color-status-pending)]">
           <AlertTriangle className="size-4 mt-0.5 shrink-0" />
           <span>
             {pendentes} despesa(s) do período ainda estão <b>pendentes</b> e não entram neste fechamento.
@@ -238,7 +239,7 @@ function NovoFechamento() {
       )}
 
       {porColab.size > 0 && (
-        <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+        <div className="rounded-xl border border-border bg-card p-4 shadow-card">
           <div className="text-xs uppercase tracking-wider font-semibold text-muted-foreground mb-2">Por colaborador</div>
           <ul className="divide-y divide-border">
             {[...porColab.values()].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")).map((c) => (
@@ -278,10 +279,10 @@ function Historico() {
     },
   });
 
-  if (isLoading) return <p className="text-sm text-muted-foreground">Carregando…</p>;
+  if (isLoading) return <ListSkeleton />;
   if (relatorios.length === 0)
     return (
-      <div className="rounded-2xl border border-dashed border-border p-10 text-center text-muted-foreground text-sm">
+      <div className="rounded-xl border border-dashed border-border p-10 text-center text-muted-foreground text-sm">
         Nenhum fechamento concluído ainda.
       </div>
     );
@@ -307,7 +308,7 @@ function HistoricoCard({ r }: { r: Relatorio }) {
   };
 
   return (
-    <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+    <div className="rounded-xl border border-border bg-card p-4 shadow-card">
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-sm font-semibold font-mono-ledger">

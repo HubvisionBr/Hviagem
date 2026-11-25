@@ -15,6 +15,7 @@ import {
 import { KeyRound, Pencil, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/PageHeader";
+import { ListSkeleton } from "@/components/ListSkeleton";
 import { requireAdmin, useProfile, type Profile } from "@/lib/profile";
 import { atualizarUsuario, criarUsuario, redefinirSenha } from "@/lib/usuarios.functions";
 
@@ -66,11 +67,11 @@ function UsuariosPage() {
       </Button>
 
       {isLoading ? (
-        <p className="text-sm text-muted-foreground">Carregando…</p>
+        <ListSkeleton />
       ) : (
         <ul className="space-y-3">
           {usuarios.map((u) => (
-            <li key={u.id} className={`rounded-2xl border border-border bg-card p-4 shadow-sm ${u.ativo ? "" : "opacity-60"}`}>
+            <li key={u.id} className={`rounded-xl border border-border bg-card p-4 shadow-card ${u.ativo ? "" : "opacity-60"}`}>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">

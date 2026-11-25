@@ -2,6 +2,7 @@ import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { BottomNav } from "@/components/BottomNav";
+import { AppSidebar } from "@/components/AppSidebar";
 import { profileQuery } from "@/lib/profile";
 
 export const Route = createFileRoute("/_authenticated")({
@@ -24,10 +25,13 @@ export const Route = createFileRoute("/_authenticated")({
 
 function AuthedLayout() {
   return (
-    <div className="min-h-screen bg-background pb-24">
-      <div className="mx-auto max-w-2xl">
-        <Outlet />
-      </div>
+    <div className="min-h-screen bg-background md:flex">
+      <AppSidebar />
+      <main className="flex-1 min-w-0 pb-24 md:pb-10">
+        <div className="mx-auto max-w-2xl md:max-w-3xl md:px-4 md:pt-2">
+          <Outlet />
+        </div>
+      </main>
       <BottomNav />
     </div>
   );

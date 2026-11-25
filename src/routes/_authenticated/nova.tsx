@@ -166,7 +166,7 @@ function NovaDespesa() {
 
       <form
         onSubmit={(e) => { e.preventDefault(); if (canSubmit && !submit.isPending && leitura?.status !== "lendo") submit.mutate(); }}
-        className="space-y-5 rounded-2xl border border-border bg-card p-5 shadow-sm"
+        className="space-y-5 rounded-xl border border-border bg-card p-5 shadow-card"
       >
         <div className="space-y-1.5">
           <Label>Comprovante</Label>

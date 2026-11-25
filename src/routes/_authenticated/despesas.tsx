@@ -19,6 +19,7 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/PageHeader";
+import { ListSkeleton } from "@/components/ListSkeleton";
 import { isAdmin, useProfile } from "@/lib/profile";
 import { buildDespesasPDF, colaboradorPdfFilename, savePDF, sharePDF } from "@/lib/pdf";
 
@@ -190,7 +191,7 @@ function DespesasPage() {
       </div>
 
       {admin && colabFilter === "todos" && resumo.porColab.size > 0 && (
-        <div className="mb-4 rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
+        <div className="mb-4 rounded-xl border border-border bg-card shadow-card overflow-hidden">
           <div className="px-4 pt-3 pb-1 text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">
             Por colaborador (em aberto)
           </div>
@@ -251,9 +252,9 @@ function DespesasPage() {
       )}
 
       {isLoading ? (
-        <p className="text-sm text-muted-foreground">Carregando…</p>
+        <ListSkeleton />
       ) : despesas.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-border p-10 text-center text-muted-foreground text-sm">
+        <div className="rounded-xl border border-dashed border-border p-10 text-center text-muted-foreground text-sm">
           {admin && statusFilter === "pendente" ? "Nenhuma despesa aguardando aprovação." : "Nenhuma despesa encontrada."}
         </div>
       ) : (
@@ -421,7 +422,7 @@ function SummaryCard({ label, value, tone }: { label: string; value: number; ton
   const bg = tone === "pending" ? "bg-[var(--color-status-pending-bg)]" : "bg-[var(--color-status-approved-bg)]";
   const fg = tone === "pending" ? "text-[var(--color-status-pending)]" : "text-[var(--color-status-approved)]";
   return (
-    <div className={`rounded-2xl border border-border ${bg} p-4`}>
+    <div className={`rounded-xl border border-border ${bg} p-4`}>
       <div className={`text-[11px] uppercase tracking-wider font-semibold ${fg}`}>{label}</div>
       <div className={`mt-1 text-xl font-mono-ledger font-semibold ${fg}`}>{fmtBRL(value)}</div>
     </div>
